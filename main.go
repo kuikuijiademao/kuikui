@@ -1,19 +1,20 @@
 package main
 
 import (
-	"github.com/gin-gonic/gin"
-	"kuikui/routes"
+	"kuikui/middleware"
 )
 
 func main() {
-	r := gin.Default()
+	middleware.CasbinTest()
 
-	routes.SysRoutesInit(r)
-
-	err := r.Run(":9000")
-
-	if err != nil {
-		//fmt.Print(err.Error)
-		panic("系统起动失败:" + err.Error())
-	}
+	//r := gin.Default()
+	//
+	//routes.SysRoutesInit(r)
+	//
+	//err := r.Run(":9000")
+	//
+	//if err != nil {
+	//	//fmt.Print(err.Error)
+	//	panic("系统起动失败:" + err.Error())
+	//}
 }
