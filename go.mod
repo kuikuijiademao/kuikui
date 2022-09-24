@@ -7,6 +7,8 @@ require (
 	github.com/casbin/gorm-adapter/v3 v3.10.0
 	github.com/gin-gonic/gin v1.8.1
 	github.com/go-sql-driver/mysql v1.6.0
+	github.com/golang-jwt/jwt/v4 v4.4.2
+	gopkg.in/yaml.v3 v3.0.0-20210107192922-496545a6307b
 	gorm.io/driver/mysql v1.3.6
 	gorm.io/gorm v1.23.8
 )

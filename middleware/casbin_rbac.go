@@ -6,6 +6,7 @@ import (
 	gormadapter "github.com/casbin/gorm-adapter/v3"
 	"github.com/gin-gonic/gin"
 	_ "github.com/go-sql-driver/mysql"
+	"kuikui/models"
 	"log"
 	"net/http"
 )
@@ -14,15 +15,19 @@ func CasbinHandler() gin.HandlerFunc {
 	return func(ctx *gin.Context) {
 
 		//获取请求用户,从请求头中获取用户信息
-		sub := ctx.Request.Header.Get("UserName")
+		sub := ctx.Request.Header.Get("USERNAME")
 		// 获取请求的URI
 		obj := ctx.Request.URL.RequestURI()
 		// 获取请求方法
 		act := ctx.Request.Method
 
-		a, _ := gormadapter.NewAdapter("mysql", "root:123456@tcp(192.168.2.157:3306)/kuikui", true) // Your driver and data source.
+		conf := models.MysqlConf{}
+		_, dn, dsn := conf.GetConfStr()
+
+		a, _ := gormadapter.NewAdapter(dn, dsn, true) // Your driver and data source.
 		e, _ := casbin.NewEnforcer("./configs/model.conf", a)
-		_ = e.LoadPolicy()
+		//e.AddPolicy(sub, obj, act)
+		//_ = e.LoadPolicy()
 		fmt.Println(obj, act, sub)
 		// 判断策略中是否存在
 		success, err := e.Enforce(sub, obj, act)

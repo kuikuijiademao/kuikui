@@ -1,0 +1,5 @@
+url: 192.168.2.157
+userName: root
+password: 123456
+dbname: kuikui
+post: 3306
