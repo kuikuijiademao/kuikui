@@ -15,7 +15,17 @@ func CasbinHandler() gin.HandlerFunc {
 	return func(ctx *gin.Context) {
 
 		//获取请求用户,从请求头中获取用户信息
-		sub := ctx.Request.Header.Get("USERNAME")
+		//sub := ctx.Request.Header.Get("USERNAME")
+		//获取请求用户可以从通过验证的token中获取用户信息
+		claims, ok := ctx.Get("claims")
+		var sub string
+		if ok {
+			sub = claims.(*CustomClaims).Username
+		} else {
+			ctx.JSON(http.StatusUnauthorized, "用户信息丢失,请重新登录")
+			return
+		}
+
 		// 获取请求的URI
 		obj := ctx.Request.URL.RequestURI()
 		// 获取请求方法

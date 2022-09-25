@@ -1,45 +1,128 @@
 package middleware
 
 import (
-	"fmt"
+	"errors"
+	"github.com/gin-gonic/gin"
 	"github.com/golang-jwt/jwt/v4"
+	"golang.org/x/sync/singleflight"
+	"net/http"
 	"time"
 )
 
-type MyClaims struct {
-	UserName string `json:"username"`
-	jwt.RegisteredClaims
+var (
+	TokenExpired     = errors.New("Token is expired")
+	TokenNotValidYet = errors.New("Token not active yet")
+	TokenMalformed   = errors.New("That's not even a token")
+	TokenInvalid     = errors.New("Couldn't handle this token:")
+)
+
+type JWT struct {
+	SigningKey []byte
 }
 
-func JwtHandler() {
-	mySigningKey := []byte("kdfausdafiksdfafufasdffi")
+func NewJWT() *JWT {
+	return &JWT{
+		[]byte("kdfausdafiksdfafufasdffi"),
+	}
+}
 
-	// Create the claims
-	claims := MyClaims{
-		"bar",
-		jwt.RegisteredClaims{
-			// A usual scenario is to set the expiration time relative to the current time
-			ExpiresAt: jwt.NewNumericDate(time.Now().Add(24 * time.Hour)),
-			IssuedAt:  jwt.NewNumericDate(time.Now()),
-			NotBefore: jwt.NewNumericDate(time.Now()),
-			Issuer:    "test",
-			Subject:   "somebody",
-			ID:        "1",
-			Audience:  []string{"somebody_else"},
-		},
+type CustomClaims struct {
+	BaseClaims
+	BufferTime int64
+	jwt.RegisteredClaims
+}
+type BaseClaims struct {
+	//UUID        uuid.UUID
+	//ID          uint
+	Username string
+	Password string
+	//NickName    string
+	//AuthorityId string
+}
+
+func JWTHandler() gin.HandlerFunc {
+
+	return func(ctx *gin.Context) {
+		token := ctx.Request.Header.Get("X-Token")
+		if token == "" {
+			ctx.JSON(http.StatusUnauthorized, gin.H{"msg": "未登录或非法访问"})
+			ctx.Abort()
+			return
+		}
+		j := NewJWT()
+		claims, err := j.ParseToken(token)
+		if err != nil {
+			if err == TokenExpired {
+				ctx.JSON(http.StatusUnauthorized, gin.H{"msg": "授权已过期"})
+				ctx.Abort()
+				return
+			}
+			ctx.JSON(http.StatusUnauthorized, gin.H{"msg": err.Error()})
+			ctx.Abort()
+			return
+		}
+		// 将当前请求的claims信息保存到请求的上下文c上
+		ctx.Set("claims", claims)
+		ctx.Next() // 后续的处理函数可以用过ctx.Get("claims")来获取当前请求的用户信息
+
 	}
 
-	// Create claims while leaving out some of the optional fields
-	claims = MyCustomClaims{
-		"bar",
-		jwt.RegisteredClaims{
-			// Also fixed dates can be used for the NumericDate
-			ExpiresAt: jwt.NewNumericDate(time.Unix(1516239022, 0)),
-			Issuer:    "test",
+}
+
+func (j *JWT) CreateClaims(baseClaims BaseClaims) CustomClaims {
+	claims := CustomClaims{
+		BaseClaims: baseClaims,
+		BufferTime: 86400, // 缓冲时间1天 缓冲时间内会获得新的token刷新令牌 此时一个用户会存在两个有效令牌 但是前端只留一个 另一个会丢失
+		RegisteredClaims: jwt.RegisteredClaims{
+			NotBefore: jwt.NewNumericDate(time.Now()),                         // 签名生效时间
+			ExpiresAt: jwt.NewNumericDate(time.Now().Add(time.Hour * 24 * 7)), // 过期时间 7天  配置文件
+			Issuer:    "kuikui",                                               // 签名的发行者
 		},
 	}
+	return claims
+}
 
+// 创建一个token
+func (j *JWT) CreateToken(claims CustomClaims) (string, error) {
 	token := jwt.NewWithClaims(jwt.SigningMethodHS256, claims)
-	ss, err := token.SignedString(mySigningKey)
-	fmt.Printf("%v %v", ss, err)
+	return token.SignedString(j.SigningKey)
+}
+
+// CreateTokenByOldToken 旧token 换新token 使用归并回源避免并发问题
+func (j *JWT) CreateTokenByOldToken(oldToken string, claims CustomClaims) (string, error) {
+	g := &singleflight.Group{}
+	v, err, _ := g.Do("JWT:"+oldToken, func() (interface{}, error) {
+		return j.CreateToken(claims)
+	})
+	return v.(string), err
+}
+
+// 解析 token
+func (j *JWT) ParseToken(tokenString string) (*CustomClaims, error) {
+	token, err := jwt.ParseWithClaims(tokenString, &CustomClaims{}, func(token *jwt.Token) (i interface{}, e error) {
+		return j.SigningKey, nil
+	})
+	if err != nil {
+		if ve, ok := err.(*jwt.ValidationError); ok {
+			if ve.Errors&jwt.ValidationErrorMalformed != 0 {
+				return nil, TokenMalformed
+			} else if ve.Errors&jwt.ValidationErrorExpired != 0 {
+				// Token is expired
+				return nil, TokenExpired
+			} else if ve.Errors&jwt.ValidationErrorNotValidYet != 0 {
+				return nil, TokenNotValidYet
+			} else {
+				return nil, TokenInvalid
+			}
+		}
+	}
+	if token != nil {
+		if claims, ok := token.Claims.(*CustomClaims); ok && token.Valid {
+			return claims, nil
+		}
+		return nil, TokenInvalid
+
+	} else {
+		return nil, TokenInvalid
+	}
 }
